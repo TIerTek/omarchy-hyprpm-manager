@@ -15,12 +15,14 @@
 #   HYPRPM_MGR_HYPRCTL    path to hyprctl        (default: hyprctl)
 #   HYPRPM_MGR_STATE_DIR  hyprpm state store     (default: /var/cache/hyprpm/$USER)
 #   HYPRPM_MGR_DEP_LIST   build deps to require  (default: hyprpm's own list)
+#   HYPRPM_MGR_CACHE      update cache written by bin/hyprpm-updates
 
 set -uo pipefail
 
 HYPRCTL=${HYPRPM_MGR_HYPRCTL:-hyprctl}
 STATE_DIR=${HYPRPM_MGR_STATE_DIR:-/var/cache/hyprpm/$(id -un 2>/dev/null || echo "${USER:-}")}
 DEP_LIST=${HYPRPM_MGR_DEP_LIST:-cmake cpio pkg-config git g++ gcc}
+CACHE=${HYPRPM_MGR_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/hyprpm-manager/updates.json}
 
 # Emit a minimal, valid document and leave. Used for every path where there is
 # nothing meaningful to say, including catastrophic failure: a widget that
@@ -40,11 +42,53 @@ run_commit=$(printf '%s' "$ver_json" | jq -r '.commit // ""' 2>/dev/null) || run
 run_tag=$(printf '%s' "$ver_json" | jq -r '.tag // ""' 2>/dev/null) || run_tag=""
 
 # --- what the compositor actually has loaded --------------------------------
-loaded_names=$(timeout 3 "$HYPRCTL" plugin list 2>/dev/null \
-  | sed -n 's/^Plugin[[:space:]]\{1,\}\([^[:space:]]\{1,\}\)[[:space:]]\{1,\}by.*/\1/p')
+# hyprctl prints a stanza per loaded plugin:
+#
+#   Plugin borders-plus-plus by Vaxry:
+#           Handle: 559a3c753300
+#           Version: 1.0
+#           Description: A plugin to add more borders to windows.
+#
+# The version and description are only knowable from here - hyprpm's state.toml
+# records neither - so they exist for loaded plugins and nothing else.
+declare -A LOADED_SET=() LOADED_VER=() LOADED_DESC=()
+while IFS=$'\t' read -r ln lv ld; do
+  [[ -n $ln ]] || continue
+  LOADED_SET[$ln]=1
+  LOADED_VER[$ln]=$lv
+  LOADED_DESC[$ln]=$ld
+done < <(timeout 3 "$HYPRCTL" plugin list 2>/dev/null | awk '
+  /^Plugin / {
+    line = $0
+    sub(/^Plugin[ \t]+/, "", line)
+    i = index(line, " by ")
+    if (i > 0) { cur = substr(line, 1, i - 1) } else { cur = line; sub(/:[ \t]*$/, "", cur) }
+    order[++n] = cur; seen[cur] = 1
+    next
+  }
+  /^[ \t]+Version:/     { v = $0; sub(/^[ \t]*Version:[ \t]*/, "", v);     V[cur] = v; next }
+  /^[ \t]+Description:/ { d = $0; sub(/^[ \t]*Description:[ \t]*/, "", d); D[cur] = d; next }
+  END { for (i = 1; i <= n; i++) { c = order[i]; printf "%s\t%s\t%s\n", c, V[c], D[c] } }
+')
 
-is_loaded() {
-  printf '%s\n' "$loaded_names" | grep -qx -- "$1"
+is_loaded() { [[ -n ${LOADED_SET[$1]:-} ]]; }
+
+# --- upstream updates, from the cache only ----------------------------------
+# Never checked here. bin/hyprpm-updates owns the network call and leaves this
+# behind; a missing or unreadable cache simply means "no updates known", which
+# is the correct answer when nothing has looked.
+upd_checked=0
+upd_repos='[]'
+if [[ -r $CACHE ]]; then
+  upd_checked=$(jq -r '.checkedAt // 0' "$CACHE" 2>/dev/null) || upd_checked=0
+  upd_repos=$(jq -c '[.repos // {} | to_entries[] | select(.value.behind == true) | .key]' \
+    "$CACHE" 2>/dev/null) || upd_repos='[]'
+fi
+[[ $upd_checked =~ ^[0-9]+$ ]] || upd_checked=0
+printf '%s' "$upd_repos" | jq -e . >/dev/null 2>&1 || upd_repos='[]'
+
+repo_has_update() {
+  printf '%s' "$upd_repos" | jq -e --arg r "$1" 'index($r) != null' >/dev/null 2>&1
 }
 
 # --- hyprpm's recorded intent ------------------------------------------------
@@ -115,9 +159,13 @@ for f in "${state_files[@]}"; do
   while IFS=$'\t' read -r repo name enabled failed; do
     [[ -n $name ]] || continue
     if is_loaded "$name"; then loaded=true; else loaded=false; fi
+    if repo_has_update "$repo"; then has_update=true; else has_update=false; fi
     plugins_json+=("$(jq -nc --arg r "$repo" --arg n "$name" \
       --argjson e "${enabled:-false}" --argjson fl "${failed:-false}" --argjson l "$loaded" \
-      '{repo:$r,name:$n,enabled:$e,failed:$fl,loaded:$l}')")
+      --arg v "${LOADED_VER[$name]:-}" --arg d "${LOADED_DESC[$name]:-}" \
+      --argjson up "$has_update" \
+      '{repo:$r,name:$n,enabled:$e,failed:$fl,loaded:$l,
+        version:$v,description:$d,updateAvailable:$up}')")
     if [[ $enabled == true ]]; then
       any_enabled=1 ; enabled_names+=("$name")
       [[ $failed == true ]] && failed_names+=("$name")
@@ -171,9 +219,15 @@ p_arr=$(join_json "${plugins_json[@]+"${plugins_json[@]}"}")
 q_arr=$(join_json "${problems_json[@]+"${problems_json[@]}"}")
 m_arr=$(printf '%s\n' "${missing_deps[@]+"${missing_deps[@]}"}" | jq -Rc 'select(length>0)' | jq -sc .)
 
+# An available update is deliberately NOT a problem and never changes `state`.
+# The amber badge has to keep meaning "these will stop loading"; if a routine
+# upstream commit turned it amber too, the warning that matters would be
+# indistinguishable from noise.
 jq -n --arg state "$state" --arg tag "$run_tag" --arg commit "$run_commit" \
       --arg hstatus "$hdr_status" --argjson plugins "$p_arr" \
       --argjson problems "$q_arr" --argjson missing "${m_arr:-[]}" \
+      --argjson uchecked "${upd_checked:-0}" --argjson urepos "$upd_repos" \
   '{schema:1,state:$state,hyprland:{tag:$tag,commit:$commit},headers:{status:$hstatus},
-    deps:{missing:$missing},plugins:$plugins,problems:$problems}' 2>/dev/null \
+    deps:{missing:$missing},updates:{checkedAt:$uchecked,repos:$urepos},
+    plugins:$plugins,problems:$problems}' 2>/dev/null \
   || bail_unavailable

@@ -19,6 +19,7 @@ for dir in "$HERE"/fixtures/*/; do
     HYPRPM_MGR_HYPRCTL="$dir/hyprctl" \
     HYPRPM_MGR_STATE_DIR="$dir/state" \
     HYPRPM_MGR_DEP_LIST="${dep_list:-git}" \
+    HYPRPM_MGR_CACHE="${cache_file:-$dir/updates.json}" \
     "$COLLECTOR" 2>/dev/null
   )
   rc=$?
@@ -32,12 +33,19 @@ for dir in "$HERE"/fixtures/*/; do
   [[ $got_state == "$want_state" ]] || errs+=("state=$got_state want=$want_state")
   [[ $got_codes == "$want_codes" ]] || errs+=("codes=[$got_codes] want=[$want_codes]")
 
+  # Optional extra assertion: a jq expression and the string it must produce.
+  if [[ -n ${want_jq:-} ]]; then
+    got_jq=$(printf '%s' "$out" | jq -r "$want_jq" 2>/dev/null)
+    [[ $got_jq == "${want_jq_value:-}" ]] \
+      || errs+=("jq($want_jq)=[$got_jq] want=[${want_jq_value:-}]")
+  fi
+
   if [[ ${#errs[@]} -eq 0 ]]; then
     printf '  ok   %s\n' "$name"; pass=$((pass+1))
   else
     printf '  FAIL %s\n' "$name"; printf '         %s\n' "${errs[@]}"; fail=$((fail+1))
   fi
-  unset want_state want_codes dep_list
+  unset want_state want_codes dep_list cache_file want_jq want_jq_value
 done
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

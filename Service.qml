@@ -22,6 +22,12 @@ Item {
   // start, but not instantly: the session is still coming up.
   readonly property int startupDelayMs: 45 * 1000
 
+  // Asking six remotes whether they have moved on is not urgent and costs
+  // network, so it runs far less often than the local health check and never
+  // during the login rush. Its answer reaches the UI only through the cache.
+  readonly property int updateCheckMs: 6 * 3600 * 1000
+  readonly property int updateStartupDelayMs: 90 * 1000
+
   // Survives a shell reload, so `omarchy restart shell` (which happens during
   // updates - exactly when things break) does not re-announce old news.
   PersistentProperties {
@@ -78,6 +84,32 @@ Item {
   }
 
   Process { id: notifyProc }
+
+  function checkUpdates() {
+    if (!updatesProc.running) updatesProc.running = true
+  }
+
+  Process {
+    id: updatesProc
+    command: [
+      "timeout", "--kill-after=5s", "120s", "bash",
+      decodeURIComponent(Qt.resolvedUrl("bin/hyprpm-updates").toString().slice(7))
+    ]
+  }
+
+  Timer {
+    interval: root.updateStartupDelayMs
+    running: true
+    repeat: false
+    onTriggered: root.checkUpdates()
+  }
+
+  Timer {
+    interval: root.updateCheckMs
+    running: true
+    repeat: true
+    onTriggered: root.checkUpdates()
+  }
 
   Timer {
     interval: root.startupDelayMs

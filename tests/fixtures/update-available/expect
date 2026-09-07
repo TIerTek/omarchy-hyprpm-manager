@@ -1,0 +1,5 @@
+want_state=ok
+want_codes=""
+dep_list="git"
+want_jq='[.state, (.plugins[0].updateAvailable|tostring), (.updates.repos|join(","))] | join("|")'
+want_jq_value='ok|true|hyprland-plugins'

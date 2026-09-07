@@ -1,0 +1,11 @@
+[hyprexpo]
+enabled = true
+failed = false
+filename = 'hyprexpo.so'
+
+[repository]
+name = 'hyprland-plugins'
+author = 'hyprwm'
+hash = '7644cec'
+url = 'u'
+rev = ''

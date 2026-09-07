@@ -18,9 +18,13 @@ BarWidget {
     if (status.state === "degraded") return Qt.tint(Color.foreground, Qt.rgba(1, 0.65, 0, 0.45))
     return Color.foreground
   }
+  readonly property var updateRepos:
+    (status.data && status.data.updates && status.data.updates.repos) ? status.data.updates.repos : []
+
   readonly property string tooltip: {
     if (status.state === "broken") return "Hyprland plugins are not loading — click to fix"
     if (status.state === "degraded") return "Hyprland plugins need rebuilding before the next restart"
+    if (updateRepos.length > 0) return "Hyprland plugins healthy — updates available"
     return "Hyprland plugins healthy"
   }
   function open() { if (panelLoader.item) panelLoader.item.open() }

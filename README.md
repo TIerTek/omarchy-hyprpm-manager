@@ -65,6 +65,23 @@ without reloading would record the change but leave the compositor unaware of it
 | `r` | `hyprpm reload` — load enabled plugins into the running session |
 | `Esc` | close |
 
+## Plugin updates
+
+Separately from health, it notices when a plugin repository has moved on
+upstream. This is deliberately **not** a problem and never changes the bar
+colour: amber has to keep meaning *these will stop loading*, and a routine
+upstream commit turning it amber too would make the warning that matters
+indistinguishable from noise. It appears as a line beside the update button —
+"1 repository has an update" — and in the widget tooltip.
+
+The check is a separate program, [`bin/hyprpm-updates`](bin/hyprpm-updates),
+run on a six-hour timer. It is the only part of the plugin that touches the
+network, which is exactly why it is separate: `hyprpm-status` never calls it and
+only reads the cache it leaves behind, so the panel stays fast and works
+offline. A laptop on a dead network gets a stale cache, not a panel that hangs —
+and a failed lookup records *no update*, because claiming one on no evidence is
+worse than silence.
+
 ## It tells you without being asked
 
 A bar widget you have to open is no use for something that breaks while you are
@@ -122,7 +139,8 @@ without touching the UI. See [docs/detection.md](docs/detection.md).
 ## Tests
 
 ```
-tests/test-status.sh          # detection: 12 fixtures
+tests/test-status.sh          # detection: 14 fixtures
+tests/test-updates.sh         # upstream check, with git stubbed
 tests/test-apply.sh           # enable/disable helper, with hyprpm stubbed
 node tests/test-notify-model.cjs   # when to notify, against a fake clock
 ```

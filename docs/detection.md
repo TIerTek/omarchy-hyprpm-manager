@@ -61,6 +61,21 @@ the system warns about it.
 Disabled plugins are skipped entirely — not being loaded is what disabled
 means.
 
+## Updates are not problems
+
+`bin/hyprpm-updates` compares each repository's recorded `hash` against
+`git ls-remote <url> HEAD` and writes `$XDG_CACHE_HOME/hyprpm-manager/updates.json`.
+`hyprpm-status` only ever *reads* that file, so the health check never blocks on
+the network.
+
+An available update is reported in `updates.repos` and per plugin as
+`updateAvailable`, but it does not enter the state machine above and cannot make
+the state anything other than what health alone says. The remedy (`hyprpm
+update`) is repository-wide, so the indicator is shown once rather than on every
+plugin row.
+
+An unreachable remote records `behind: false`. Not knowing is not evidence.
+
 ## Failure behaviour
 
 The collector always prints valid JSON and always exits 0. Any path it cannot

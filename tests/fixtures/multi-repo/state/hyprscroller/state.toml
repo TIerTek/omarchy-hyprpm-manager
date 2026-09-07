@@ -1,0 +1,11 @@
+[hyprscroller]
+enabled = false
+failed = false
+filename = 'hyprscroller.so'
+
+[repository]
+name = 'hyprscroller'
+author = 'dawsers'
+hash = 'b'
+url = 'u2'
+rev = ''

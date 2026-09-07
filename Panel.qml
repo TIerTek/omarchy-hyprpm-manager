@@ -27,6 +27,12 @@ Panel {
     return Color.foreground
   }
 
+  // Amber-ish, distinct from the urgent red: an available update is news, not
+  // a fault.
+  readonly property color hintColor: Qt.tint(Color.foreground, Qt.rgba(1, 0.65, 0, 0.35))
+
+  readonly property var updateRepos: (doc.updates && doc.updates.repos) ? doc.updates.repos : []
+
   readonly property string headline: {
     // "unavailable" is reachable here even though the bar button hides in that
     // state: the panel can still be opened over IPC, and it must not claim
@@ -40,6 +46,16 @@ Panel {
   readonly property string subline: {
     if (doc.state === "unavailable") return "No Hyprland plugin repositories installed"
     return "Hyprland " + root.hyprTag + " \u00b7 headers " + root.headersStatus
+  }
+
+  // An update belongs to the repository, and `hyprpm update` updates all of
+  // them at once. Repeating it on every plugin row implied a per-plugin action
+  // that does not exist, so it is said once, beside the button that does it.
+  readonly property string updateHint: {
+    var n = root.updateRepos.length
+    if (n === 0) return ""
+    return n === 1 ? "1 repository has an update"
+                   : n + " repositories have updates"
   }
 
   // Shared with the notifier, so a notification and the panel can never word
@@ -300,8 +316,21 @@ Panel {
                   width: parent.width
                   textFormat: Text.PlainText
                   text: modelData.repo + " · " + root.pluginState(modelData)
+                    + (modelData.version ? " · v" + modelData.version : "")
                   color: (modelData.enabled && !modelData.loaded)
                     ? Color.urgent : Qt.darker(Color.foreground, 1.5)
+                  font.family: root.family
+                  font.pixelSize: Style.font.caption
+                  elide: Text.ElideRight
+                }
+                // Only for the row under the cursor: useful when you are
+                // deciding what something is, clutter on every row at once.
+                Text {
+                  width: parent.width
+                  visible: pluginRow.hasCursor && !!modelData.description
+                  textFormat: Text.PlainText
+                  text: modelData.description
+                  color: Qt.darker(Color.foreground, 1.7)
                   font.family: root.family
                   font.pixelSize: Style.font.caption
                   elide: Text.ElideRight
@@ -361,8 +390,8 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             horizontalAlignment: Text.AlignRight
             textFormat: Text.PlainText
-            text: "opens a terminal"
-            color: Qt.darker(Color.foreground, 1.6)
+            text: root.updateHint !== "" ? root.updateHint : "opens a terminal"
+            color: root.updateHint !== "" ? root.hintColor : Qt.darker(Color.foreground, 1.6)
             font.family: root.family
             font.pixelSize: Style.font.caption
             elide: Text.ElideRight

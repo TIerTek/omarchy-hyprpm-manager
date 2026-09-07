@@ -1,0 +1,5 @@
+want_state=ok
+want_codes=""
+dep_list="git"
+want_jq='[.plugins[] | .repo + "/" + .name] | join(",")'
+want_jq_value='hyprland-plugins/hyprexpo,hyprscroller/hyprscroller'

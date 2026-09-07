@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# hyprpm-updates — ask each installed plugin repository whether it has moved on,
+# and write the answer to a cache.
+#
+# This is the only part of the plugin that touches the network, which is exactly
+# why it is a separate program. bin/hyprpm-status must stay fast and work
+# offline, so it never calls this; it only reads the cache this leaves behind.
+# A laptop on a dead network gets a stale cache, not a panel that hangs.
+#
+# Being unreachable is not evidence of anything. When a lookup fails the repo is
+# recorded as not behind, because telling someone an update exists on no evidence
+# is worse than staying quiet.
+#
+#   HYPRPM_MGR_STATE_DIR  hyprpm state store (default: /var/cache/hyprpm/$USER)
+#   HYPRPM_MGR_GIT        path to git        (default: git)
+#   HYPRPM_MGR_CACHE      cache file         (default: $XDG_CACHE_HOME/hyprpm-manager/updates.json)
+set -uo pipefail
+
+STATE_DIR=${HYPRPM_MGR_STATE_DIR:-/var/cache/hyprpm/$(id -un 2>/dev/null || echo "${USER:-}")}
+GIT=${HYPRPM_MGR_GIT:-git}
+CACHE=${HYPRPM_MGR_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/hyprpm-manager/updates.json}
+
+write_cache() {  # <repos-json>
+  mkdir -p "$(dirname "$CACHE")" 2>/dev/null
+  local tmp="$CACHE.tmp.$$"
+  if jq -n --argjson repos "$1" --arg at "$(date +%s)" \
+      '{schema:1, checkedAt:($at|tonumber), repos:$repos}' > "$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$CACHE"
+  else
+    rm -f "$tmp"
+  fi
+}
+
+command -v jq >/dev/null 2>&1 || exit 0
+
+value_of() {  # <file> <key> — read a single-or-double quoted TOML scalar
+  sed -n "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*['\"]\\([^'\"]*\\)['\"].*/\\1/p" "$1" | head -1
+}
+
+entries=()
+while IFS= read -r f; do
+  [[ -n $f ]] || continue
+  name=$(value_of "$f" name)
+  url=$(value_of "$f" url)
+  recorded=$(value_of "$f" hash)
+  [[ -n $name ]] || name=$(basename "$(dirname "$f")")
+  [[ -n $url && -n $recorded ]] || continue
+
+  # Shallow question, short leash: this runs on a timer, not in front of anyone.
+  upstream=$(timeout 20 "$GIT" ls-remote "$url" HEAD 2>/dev/null | awk 'NR==1{print $1}')
+
+  if [[ -n $upstream && $upstream != "$recorded" ]]; then behind=true; else behind=false; fi
+  entries+=("$(jq -n --arg n "$name" --arg r "$recorded" --arg u "${upstream:-}" \
+    --argjson b "$behind" '{($n): {recorded:$r, upstream:$u, behind:$b}}')")
+done < <(find "$STATE_DIR" -mindepth 2 -maxdepth 2 -name state.toml 2>/dev/null | sort)
+
+if [[ ${#entries[@]} -eq 0 ]]; then
+  write_cache '{}'
+else
+  write_cache "$(printf '%s\n' "${entries[@]}" | jq -sc 'add')"
+fi
+exit 0

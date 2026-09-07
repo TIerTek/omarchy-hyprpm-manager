@@ -1,3 +1,5 @@
 want_state=ok
 want_codes=""
 dep_list="git"
+want_jq='[.plugins[0].version, .plugins[0].description] | join("|")'
+want_jq_value='0.1|expo-like overview'
