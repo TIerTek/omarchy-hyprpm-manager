@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell.Io
 import qs.Ui
 import qs.Commons
+import "NotifyModel.js" as NotifyModel
 
 Panel {
   id: root
@@ -41,22 +42,32 @@ Panel {
     return "Hyprland " + root.hyprTag + " \u00b7 headers " + root.headersStatus
   }
 
-  function problemTitle(code) {
-    switch (code) {
-      case "deps_missing":    return "Build tools missing"
-      case "headers_missing": return "Hyprland headers not installed"
-      case "abi_mismatch":    return "Built against a different Hyprland"
-      case "rebuild_pending": return "Rebuild needed before next restart"
-      case "not_loaded":      return "Enabled plugin is not loaded"
-      case "build_failed":    return "Plugin failed to build"
-    }
-    return code
-  }
+  // Shared with the notifier, so a notification and the panel can never word
+  // the same problem differently.
+  function problemTitle(code) { return NotifyModel.problemTitle(code) }
 
   function pluginState(p) {
     if (!p.enabled) return "disabled"
     if (p.failed) return "build failed"
     return p.loaded ? "loaded" : "not loaded"
+  }
+
+  // Keyboard cursor over the plugin rows. Every first-party Omarchy panel is
+  // fully keyboard drivable; this one has to be too.
+  property bool cursorActive: false
+  property int cursorIndex: 0
+
+  function moveCursor(delta) {
+    if (root.plugins.length === 0) return
+    var next = root.cursorIndex + delta
+    root.cursorIndex = next < 0 ? 0
+      : next > root.plugins.length - 1 ? root.plugins.length - 1 : next
+  }
+
+  function activateCursor() {
+    if (!root.cursorActive) return
+    var p = root.plugins[root.cursorIndex]
+    if (p) root.setPluginEnabled(p.name, !p.enabled)
   }
 
   function switchPanel(direction) {
@@ -89,7 +100,12 @@ Panel {
     root.runInTerminal(root.applyHelper + " " + (on ? "enable" : "disable") + " " + name)
   }
 
-  onOpenedChanged: if (opened && status) status.refresh()
+  onOpenedChanged: {
+    if (!opened) return
+    root.cursorActive = false
+    root.cursorIndex = 0
+    if (status) status.refresh()
+  }
 
   KeyboardPanel {
     id: panel
@@ -106,6 +122,13 @@ Panel {
       anchors.fill: parent
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
+      // First arrow press reveals the cursor rather than moving it, so the
+      // selection never jumps somewhere the eye was not already looking.
+      onMoveRequested: function(dx, dy) {
+        if (!root.cursorActive) { root.cursorActive = true; return }
+        if (dy !== 0) root.moveCursor(dy)
+      }
+      onActivateRequested: root.activateCursor()
       onTextKey: function(t) {
         if (t === "u" || t === "U") root.runInTerminal("hyprpm update")
         else if (t === "r" || t === "R") root.runInTerminal("hyprpm reload")
@@ -240,9 +263,21 @@ Panel {
           Repeater {
             model: root.plugins
             delegate: Item {
+              id: pluginRow
               required property var modelData
+              required property int index
+              readonly property bool hasCursor: root.cursorActive && root.cursorIndex === index
               width: column.width
               implicitHeight: Math.max(labels.implicitHeight, sw.implicitHeight)
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: -Style.space(4)
+                radius: Style.cornerRadius > 0 ? Style.space(6) : 0
+                color: Color.foreground
+                opacity: pluginRow.hasCursor ? 0.08 : 0
+                Behavior on opacity { NumberAnimation { duration: 90 } }
+              }
 
               Column {
                 id: labels
@@ -279,6 +314,12 @@ Panel {
                 anchors.verticalCenter: parent.verticalCenter
                 checked: modelData.enabled === true
                 foreground: Color.foreground
+                hasCursor: pluginRow.hasCursor
+                onHovered: function(on) {
+                  if (!on) return
+                  root.cursorActive = true
+                  root.cursorIndex = pluginRow.index
+                }
                 onToggled: root.setPluginEnabled(modelData.name, !modelData.enabled)
               }
             }

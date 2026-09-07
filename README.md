@@ -59,9 +59,31 @@ without reloading would record the change but leave the compositor unaware of it
 
 | Key | Action |
 |---|---|
+| `↑` `↓` | move through the plugin list |
+| `Enter` | enable or disable the selected plugin |
 | `u` | `hyprpm update` — rebuild everything against the running Hyprland |
 | `r` | `hyprpm reload` — load enabled plugins into the running session |
 | `Esc` | close |
+
+## It tells you without being asked
+
+A bar widget you have to open is no use for something that breaks while you are
+not looking. A headless service checks shortly after login — when post-update
+breakage actually surfaces — and every fifteen minutes after that.
+
+It speaks **on transitions only, never on steady state**:
+
+- Plugins already failing to load → a critical notification.
+- Plugins that will stop loading after the next restart → a normal one. This is
+  the warning worth having, and it must not shout or people learn to dismiss it.
+- Healthy, or hyprpm unused → silence. Recovery is silent too; nobody needs an
+  all-clear.
+
+Repeats are suppressed by a *signature* (state plus the sorted problem codes)
+that survives a shell reload, so `omarchy restart shell` — which happens during
+updates, exactly when things break — does not re-announce old news. A changed
+signature is news even inside the quiet window; an unchanged one re-arms after
+twelve hours.
 
 ## It never elevates
 
@@ -91,14 +113,18 @@ that prints one JSON document and always exits 0:
 
 It reads hyprpm's own `state.toml` files for what *should* be loaded and the
 running compositor for what *is* — never hyprpm's ANSI-coloured human output.
+The bar widget and the notifier share this one collector, so they can never
+disagree about what "broken" means, and `NotifyModel.js` owns both the decision
+to notify and the human wording of every problem code.
 The QML only renders the result, so the state machine can be changed and tested
 without touching the UI. See [docs/detection.md](docs/detection.md).
 
 ## Tests
 
 ```
-tests/test-status.sh   # detection: 12 fixtures
-tests/test-apply.sh    # enable/disable helper, with hyprpm stubbed
+tests/test-status.sh          # detection: 12 fixtures
+tests/test-apply.sh           # enable/disable helper, with hyprpm stubbed
+node tests/test-notify-model.cjs   # when to notify, against a fake clock
 ```
 
 Twelve fixtures cover every state, including ones that are painful to

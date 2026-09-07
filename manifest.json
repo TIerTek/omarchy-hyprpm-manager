@@ -2,15 +2,17 @@
   "schemaVersion": 1,
   "id": "tiertek.hyprpm-manager",
   "name": "hyprpm Manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "TierTek",
   "license": "MIT",
   "description": "Hyprland native plugin health in the Omarchy bar. Warns you when hyprpm plugins are about to stop loading, and hands you the one command that fixes it.",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "service"
   ],
   "entryPoints": {
-    "barWidget": "BarWidget.qml"
+    "barWidget": "BarWidget.qml",
+    "service": "Service.qml"
   },
   "barWidget": {
     "displayName": "hyprpm Manager",
