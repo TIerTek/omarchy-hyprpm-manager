@@ -318,16 +318,37 @@ Panel {
                   font.pixelSize: Style.font.body
                   elide: Text.ElideRight
                 }
-                Text {
+                // The repository is the unit an update belongs to - every plugin in it
+                // moves at one commit - so the affected rows are marked on the repo
+                // name itself. Split into a Row purely so that half can be coloured
+                // without resorting to StyledText on names that come off disk.
+                Row {
                   width: parent.width
-                  textFormat: Text.PlainText
-                  text: modelData.repo + " · " + root.pluginState(modelData)
-                    + (modelData.version ? " · v" + modelData.version : "")
-                  color: (modelData.enabled && !modelData.loaded)
+                  spacing: 0
+
+                  property color baseColor: (modelData.enabled && !modelData.loaded)
                     ? Color.urgent : Qt.darker(Color.foreground, 1.5)
-                  font.family: root.family
-                  font.pixelSize: Style.font.caption
-                  elide: Text.ElideRight
+
+                  Text {
+                    id: repoLabel
+                    textFormat: Text.PlainText
+                    // An arrow as well as a colour: colour alone is not a signal everyone
+                    // can see.
+                    text: (modelData.updateAvailable ? "\u2191 " : "") + modelData.repo
+                    color: modelData.updateAvailable ? root.hintColor : parent.baseColor
+                    font.family: root.family
+                    font.pixelSize: Style.font.caption
+                  }
+                  Text {
+                    textFormat: Text.PlainText
+                    text: " \u00b7 " + root.pluginState(modelData)
+                      + (modelData.version ? " \u00b7 v" + modelData.version : "")
+                    color: parent.baseColor
+                    font.family: root.family
+                    font.pixelSize: Style.font.caption
+                    width: Math.max(0, parent.width - repoLabel.width)
+                    elide: Text.ElideRight
+                  }
                 }
                 // Only for the row under the cursor: useful when you are
                 // deciding what something is, clutter on every row at once.

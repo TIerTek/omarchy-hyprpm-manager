@@ -71,8 +71,11 @@ Separately from health, it notices when a plugin repository has moved on
 upstream. This is deliberately **not** a problem and never changes the bar
 colour: amber has to keep meaning *these will stop loading*, and a routine
 upstream commit turning it amber too would make the warning that matters
-indistinguishable from noise. It appears as a line beside the update button —
-"1 repository has an update" — and in the widget tooltip.
+indistinguishable from noise. **An update belongs to a repository, not to a plugin.** Every plugin in a
+repository ships from one commit and moves together, so there is no such thing
+as one plugin being behind while its siblings are current. Affected rows are
+marked `↑` on the repository name, and a line above the buttons names the
+repository and the key that updates it.
 
 The check is a separate program, [`bin/hyprpm-updates`](bin/hyprpm-updates),
 run on a six-hour timer. It is the only part of the plugin that touches the
