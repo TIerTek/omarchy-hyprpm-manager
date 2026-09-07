@@ -44,7 +44,7 @@ plugin.
 ## Install
 
 ```
-omarchy plugin add https://github.com/cdavidson-tiertek/omarchy-hyprpm-manager --enable
+omarchy plugin add https://github.com/TIerTek/omarchy-hyprpm-manager --enable
 ```
 
 The widget hides itself unless this machine actually uses hyprpm, so it is safe
