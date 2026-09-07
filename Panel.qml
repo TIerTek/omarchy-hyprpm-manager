@@ -27,9 +27,18 @@ Panel {
   }
 
   readonly property string headline: {
+    // "unavailable" is reachable here even though the bar button hides in that
+    // state: the panel can still be opened over IPC, and it must not claim
+    // everything is fine when the collector found nothing at all.
+    if (doc.state === "unavailable") return "hyprpm not in use"
     if (doc.state === "broken") return "Plugins are not loading"
     if (doc.state === "degraded") return "Rebuild needed before next restart"
     return "All plugins loaded"
+  }
+
+  readonly property string subline: {
+    if (doc.state === "unavailable") return "No Hyprland plugin repositories installed"
+    return "Hyprland " + root.hyprTag + " \u00b7 headers " + root.headersStatus
   }
 
   function problemTitle(code) {
@@ -139,7 +148,7 @@ Panel {
             Text {
               width: parent.width
               textFormat: Text.PlainText
-              text: "Hyprland " + root.hyprTag + " · headers " + root.headersStatus
+              text: root.subline
               color: Qt.darker(Color.foreground, 1.5)
               font.family: root.family
               font.pixelSize: Style.font.caption

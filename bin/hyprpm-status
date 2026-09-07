@@ -84,9 +84,25 @@ for dep in $DEP_LIST; do
 done
 
 # --- headers -----------------------------------------------------------------
+# Two sources, deliberately ordered. hyprpm records what it actually built
+# against in a global state.toml at the root of the state store, as
+# "<commit>_aq_<ver>_hu_<ver>_...", and that string is what hyprpm itself
+# compares. Prefer it. The installed version.h is the fallback for state stores
+# written by older hyprpm versions.
+#
+# Presence is judged from version.h, never from the recorded hash: a state.toml
+# can name a hash for headers that are no longer on disk.
 hdr_file=$(find "$STATE_DIR/headersRoot" -name version.h 2>/dev/null | head -1)
+hdr_present=0
+[[ -n $hdr_file && -r $hdr_file ]] && hdr_present=1
+
 hdr_hash=""
-if [[ -n $hdr_file && -r $hdr_file ]]; then
+if [[ -r "$STATE_DIR/state.toml" ]]; then
+  hdr_hash=$(sed -n "s/^[[:space:]]*hash[[:space:]]*=[[:space:]]*['\"]\([^'\"]*\)['\"].*/\1/p" \
+    "$STATE_DIR/state.toml" | head -1)
+  hdr_hash=${hdr_hash%%_*}
+fi
+if [[ -z $hdr_hash && $hdr_present -eq 1 ]]; then
   hdr_hash=$(sed -n 's/.*GIT_COMMIT_HASH[^"]*"\([^"]*\)".*/\1/p' "$hdr_file" | head -1)
 fi
 
@@ -120,7 +136,7 @@ if [[ ${#missing_deps[@]} -gt 0 ]]; then
 fi
 
 hdr_status=ok
-if [[ -z $hdr_hash ]]; then
+if [[ $hdr_present -eq 0 || -z $hdr_hash ]]; then
   hdr_status=missing
   add_problem headers_missing "" "hyprpm update"
   worse broken
