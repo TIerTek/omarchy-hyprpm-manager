@@ -51,11 +51,17 @@ Panel {
   // An update belongs to the repository, and `hyprpm update` updates all of
   // them at once. Repeating it on every plugin row implied a per-plugin action
   // that does not exist, so it is said once, beside the button that does it.
+  // Naming the repository matters: "1 repository has an update" tells you
+  // neither which one nor what to do about it. Beyond two names the list stops
+  // being readable, and by then the count is the useful part - the remedy
+  // updates all of them regardless.
   readonly property string updateHint: {
     var n = root.updateRepos.length
     if (n === 0) return ""
-    return n === 1 ? "1 repository has an update"
-                   : n + " repositories have updates"
+    var who = n === 1 ? root.updateRepos[0] + " has an update"
+      : n === 2 ? root.updateRepos[0] + " and " + root.updateRepos[1] + " have updates"
+      : n + " repositories have updates"
+    return who + " \u00b7 press u to update"
   }
 
   // Shared with the notifier, so a notification and the panel can never word
@@ -355,6 +361,17 @@ Panel {
           }
         }
 
+        Text {
+          width: parent.width
+          visible: root.updateHint !== ""
+          textFormat: Text.PlainText
+          text: root.updateHint
+          color: root.hintColor
+          font.family: root.family
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+        }
+
         // ---------- Actions ----------
         PanelSeparator { width: parent.width }
 
@@ -390,8 +407,8 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             horizontalAlignment: Text.AlignRight
             textFormat: Text.PlainText
-            text: root.updateHint !== "" ? root.updateHint : "opens a terminal"
-            color: root.updateHint !== "" ? root.hintColor : Qt.darker(Color.foreground, 1.6)
+            text: "opens a terminal"
+            color: Qt.darker(Color.foreground, 1.6)
             font.family: root.family
             font.pixelSize: Style.font.caption
             elide: Text.ElideRight
