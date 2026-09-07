@@ -50,6 +50,49 @@ omarchy plugin add https://github.com/TIerTek/omarchy-hyprpm-manager --enable
 The widget hides itself unless this machine actually uses hyprpm, so it is safe
 to install before you have any Hyprland plugins.
 
+### Removing it
+
+```
+omarchy plugin remove tiertek.hyprpm-manager
+```
+
+That is the whole removal. The only thing it leaves behind is its update cache,
+if you want that gone too:
+
+```
+rm -rf ~/.cache/hyprpm-manager
+```
+
+It writes nothing else outside its own plugin directory, and it never edits your
+Hyprland or Omarchy configuration — the only system state it changes is hyprpm's
+own, and only when you flip a switch or press a key that says it will.
+
+## Requirements
+
+Everything here ships with Omarchy except `hyprpm` itself, which comes with
+Hyprland.
+
+| Needs | For |
+|---|---|
+| `hyprpm`, `hyprctl` | reading plugin state and the running compositor |
+| `bash`, `jq`, `coreutils` (`timeout`) | the collector |
+| `git` | checking whether a repository has an update (read-only `ls-remote`) |
+| `libnotify` (`notify-send`) | the warning notification |
+| `sudo`, `doas` or `run0` | hyprpm's own elevation when you enable, disable or update |
+
+`cmake`, `cpio`, `pkg-config`, `g++` and `gcc` are hyprpm's build dependencies
+rather than this plugin's — it does not use them, it tells you when they are
+missing, because hyprpm fails with one cryptic line when they are.
+
+### What it runs, and with what privilege
+
+The plugin holds no privilege of its own and never modifies `sudoers`. It runs
+`hyprctl` and reads files to build its status, and `git ls-remote` on a six-hour
+timer to check for updates. Anything that changes hyprpm state — enable, disable,
+update, reload — is handed to a visible terminal, where `bin/hyprpm-apply` asks
+for elevation once with `sudo -v` before letting hyprpm run. Nothing is
+downloaded and executed, and no code is fetched at runtime.
+
 ## Using it
 
 Click the puzzle icon to open the panel. It lists every plugin hyprpm knows
