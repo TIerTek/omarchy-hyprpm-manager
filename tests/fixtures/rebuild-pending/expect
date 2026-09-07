@@ -1,0 +1,3 @@
+want_state=degraded
+want_codes="rebuild_pending"
+dep_list="git"

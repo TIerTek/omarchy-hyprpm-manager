@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+#
+# hyprpm-status — report the health of Hyprland's native plugins as JSON.
+#
+# Prints one JSON document on stdout and always exits 0. Callers render the
+# result; they never parse hyprpm's human-readable, ANSI-coloured output.
+#
+# The authoritative source of "what should be loaded" is hyprpm's own
+# state.toml files under the state store. The authoritative source of "what IS
+# loaded" is the running compositor. Divergence between the two is the whole
+# point of this tool.
+#
+# Every external dependency is injectable so the test suite never touches the
+# real state store or the running compositor:
+#   HYPRPM_MGR_HYPRCTL    path to hyprctl        (default: hyprctl)
+#   HYPRPM_MGR_STATE_DIR  hyprpm state store     (default: /var/cache/hyprpm/$USER)
+#   HYPRPM_MGR_DEP_LIST   build deps to require  (default: hyprpm's own list)
+
+set -uo pipefail
+
+HYPRCTL=${HYPRPM_MGR_HYPRCTL:-hyprctl}
+STATE_DIR=${HYPRPM_MGR_STATE_DIR:-/var/cache/hyprpm/$(id -un 2>/dev/null || echo "${USER:-}")}
+DEP_LIST=${HYPRPM_MGR_DEP_LIST:-cmake cpio pkg-config git g++ gcc}
+
+# Emit a minimal, valid document and leave. Used for every path where there is
+# nothing meaningful to say, including catastrophic failure: a widget that
+# renders nothing is correct here, a widget that renders garbage is not.
+bail_unavailable() {
+  printf '{"schema":1,"state":"unavailable","hyprland":{"tag":"","commit":""},'
+  printf '"headers":{"status":"unknown"},"deps":{"missing":[]},'
+  printf '"plugins":[],"problems":[]}\n'
+  exit 0
+}
+
+command -v jq >/dev/null 2>&1 || bail_unavailable
+
+# --- what the compositor is running -----------------------------------------
+ver_json=$(timeout 3 "$HYPRCTL" -j version 2>/dev/null)
+run_commit=$(printf '%s' "$ver_json" | jq -r '.commit // ""' 2>/dev/null) || run_commit=""
+run_tag=$(printf '%s' "$ver_json" | jq -r '.tag // ""' 2>/dev/null) || run_tag=""
+
+# --- what the compositor actually has loaded --------------------------------
+loaded_names=$(timeout 3 "$HYPRCTL" plugin list 2>/dev/null \
+  | sed -n 's/^Plugin[[:space:]]\{1,\}\([^[:space:]]\{1,\}\)[[:space:]]\{1,\}by.*/\1/p')
+
+is_loaded() {
+  printf '%s\n' "$loaded_names" | grep -qx -- "$1"
+}
+
+# --- hyprpm's recorded intent ------------------------------------------------
+[[ -d $STATE_DIR ]] || bail_unavailable
+mapfile -t state_files < <(find "$STATE_DIR" -mindepth 2 -maxdepth 2 -name state.toml 2>/dev/null | sort)
+[[ ${#state_files[@]} -gt 0 ]] || bail_unavailable
+
+# Parse the subset of TOML hyprpm writes: a [repository] table followed by one
+# table per plugin carrying enabled/failed/filename.
+parse_state() {
+  awk '
+    function strip(v) { gsub(/^[ \t]*/,"",v); gsub(/[ \t]*$/,"",v); gsub(/^"|"$/,"",v); return v }
+    /^[ \t]*\[/ {
+      sec=$0; gsub(/^[ \t]*\[[ \t]*/,"",sec); gsub(/[ \t]*\][ \t]*$/,"",sec)
+      if (sec != "repository") { plugin=sec; en[plugin]="false"; fa[plugin]="false"; order[++n]=plugin }
+      else plugin=""
+      next
+    }
+    /=/ {
+      key=$0; sub(/=.*/,"",key); key=strip(key)
+      val=$0; sub(/^[^=]*=/,"",val); val=strip(val)
+      if (plugin == "") { if (key=="name") repo=val; if (key=="author") author=val }
+      else { if (key=="enabled") en[plugin]=val; if (key=="failed") fa[plugin]=val }
+    }
+    END { for (i=1;i<=n;i++) { p=order[i]; printf "%s\t%s\t%s\t%s\n", repo, p, en[p], fa[p] } }
+  ' "$1"
+}
+
+plugins_json=() ; problems_json=()
+add_problem() { problems_json+=("$(jq -nc --arg c "$1" --arg d "$2" --arg f "$3" \
+  '{code:$c,detail:$d,fix:$f}')"); }
+
+# --- build dependencies ------------------------------------------------------
+missing_deps=()
+for dep in $DEP_LIST; do
+  command -v "$dep" >/dev/null 2>&1 || missing_deps+=("$dep")
+done
+
+# --- headers -----------------------------------------------------------------
+hdr_file=$(find "$STATE_DIR/headersRoot" -name version.h 2>/dev/null | head -1)
+hdr_hash=""
+if [[ -n $hdr_file && -r $hdr_file ]]; then
+  hdr_hash=$(sed -n 's/.*GIT_COMMIT_HASH[^"]*"\([^"]*\)".*/\1/p' "$hdr_file" | head -1)
+fi
+
+# --- collect plugins ---------------------------------------------------------
+any_enabled=0 ; all_enabled_loaded=1
+declare -a enabled_names=() failed_names=() unloaded_names=()
+for f in "${state_files[@]}"; do
+  while IFS=$'\t' read -r repo name enabled failed; do
+    [[ -n $name ]] || continue
+    if is_loaded "$name"; then loaded=true; else loaded=false; fi
+    plugins_json+=("$(jq -nc --arg r "$repo" --arg n "$name" \
+      --argjson e "${enabled:-false}" --argjson fl "${failed:-false}" --argjson l "$loaded" \
+      '{repo:$r,name:$n,enabled:$e,failed:$fl,loaded:$l}')")
+    if [[ $enabled == true ]]; then
+      any_enabled=1 ; enabled_names+=("$name")
+      [[ $failed == true ]] && failed_names+=("$name")
+      if [[ $loaded == false ]]; then all_enabled_loaded=0; unloaded_names+=("$name"); fi
+    fi
+  done < <(parse_state "$f")
+done
+
+# --- state machine -----------------------------------------------------------
+# Precedence matters: report the CAUSE, not its symptoms. Stale headers already
+# explain why a plugin did not load, so the per-plugin check is skipped there.
+state=ok
+worse() { case "$1:$state" in broken:*) state=broken ;; degraded:ok) state=degraded ;; esac; }
+
+if [[ ${#missing_deps[@]} -gt 0 ]]; then
+  add_problem deps_missing "${missing_deps[*]}" "Install: ${missing_deps[*]}"
+  worse broken
+fi
+
+hdr_status=ok
+if [[ -z $hdr_hash ]]; then
+  hdr_status=missing
+  add_problem headers_missing "" "hyprpm update"
+  worse broken
+elif [[ $hdr_hash != "$run_commit" ]]; then
+  hdr_status=mismatched
+  if [[ $any_enabled -eq 1 && $all_enabled_loaded -eq 0 ]]; then
+    add_problem abi_mismatch "headers ${hdr_hash:0:7} vs running ${run_commit:0:7}" "hyprpm update"
+    worse broken
+  elif [[ $any_enabled -eq 1 ]]; then
+    # Plugins are loaded into the running instance, but were built against a
+    # different Hyprland. They will not load after the next restart.
+    add_problem rebuild_pending "headers ${hdr_hash:0:7} vs running ${run_commit:0:7}" "hyprpm update"
+    worse degraded
+  fi
+else
+  for n in "${failed_names[@]}"; do
+    add_problem build_failed "$n" "hyprpm update -f"
+    worse broken
+  done
+  for n in "${unloaded_names[@]}"; do
+    skip=0; for f in "${failed_names[@]}"; do [[ $f == "$n" ]] && skip=1; done
+    [[ $skip -eq 1 ]] && continue
+    add_problem not_loaded "$n" "hyprpm reload"
+    worse broken
+  done
+fi
+
+join_json() { local IFS=,; printf '[%s]' "$*"; }
+p_arr=$(join_json "${plugins_json[@]+"${plugins_json[@]}"}")
+q_arr=$(join_json "${problems_json[@]+"${problems_json[@]}"}")
+m_arr=$(printf '%s\n' "${missing_deps[@]+"${missing_deps[@]}"}" | jq -Rc 'select(length>0)' | jq -sc .)
+
+jq -n --arg state "$state" --arg tag "$run_tag" --arg commit "$run_commit" \
+      --arg hstatus "$hdr_status" --argjson plugins "$p_arr" \
+      --argjson problems "$q_arr" --argjson missing "${m_arr:-[]}" \
+  '{schema:1,state:$state,hyprland:{tag:$tag,commit:$commit},headers:{status:$hstatus},
+    deps:{missing:$missing},plugins:$plugins,problems:$problems}' 2>/dev/null \
+  || bail_unavailable

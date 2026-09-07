@@ -1,0 +1,3 @@
+want_state=broken
+want_codes="not_loaded"
+dep_list="git"

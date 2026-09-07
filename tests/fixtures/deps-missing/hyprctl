@@ -1,0 +1,10 @@
+#!/bin/sh
+# Test stub standing in for hyprctl.
+case "$*" in
+  "-j version")
+    printf '{"tag":"v0.56.2","commit":"efb50993780079460b0cbed1363e2166a2de1d9f","branch":"v0.56.2","dirty":false}\n'
+    ;;
+  "plugin list")
+    printf "Plugin hyprexpo by Vaxry:\n\tHandle: 7f00\n\tVersion: 0.1\n\tDescription: expo-like overview\n"
+    ;;
+esac

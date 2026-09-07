@@ -1,0 +1,11 @@
+[repository]
+name = "hyprland-plugins"
+author = "hyprwm"
+hash = "deadbeef"
+url = "https://github.com/hyprwm/hyprland-plugins"
+rev = ""
+
+[hyprexpo]
+filename = "hyprexpo.so"
+enabled = true
+failed = true
