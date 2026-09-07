@@ -12,9 +12,11 @@
 # two always travel together, and a failed flip must not reload.
 #
 #   HYPRPM_MGR_HYPRPM  path to hyprpm (default: hyprpm) — for tests
+#   HYPRPM_MGR_SUDO    path to sudo   (default: sudo)   — for tests
 set -uo pipefail
 
 HYPRPM=${HYPRPM_MGR_HYPRPM:-hyprpm}
+SUDO=${HYPRPM_MGR_SUDO:-sudo}
 
 usage() {
   echo "usage: hyprpm-apply <enable|disable> <plugin>" >&2
@@ -28,6 +30,27 @@ case "$action" in
   *) usage ;;
 esac
 [[ -n $name ]] || usage
+
+# Ask for elevation ourselves, once, before hyprpm runs.
+#
+# hyprpm shells out to sudo part-way through its own output capture. When that
+# conversation cannot complete it retries FOUR times, and every failure counts
+# against pam_faillock (deny=10 on Arch) - so two clicks of a switch can lock
+# the account, after which a perfectly correct password is refused and the
+# plugin looks like it is rejecting you. Prompting here fails fast, spends at
+# most one attempt, and puts the prompt somewhere the user can actually see.
+#
+# Skipped when sudo is absent (hyprpm also supports doas and run0) or when a
+# credential is already cached.
+if command -v "$SUDO" >/dev/null 2>&1 && ! "$SUDO" -n true 2>/dev/null; then
+  echo "hyprpm needs root to write plugin state."
+  if ! "$SUDO" -v; then
+    echo
+    echo "Authentication cancelled or failed - nothing was changed." >&2
+    exit 1
+  fi
+  echo
+fi
 
 echo "Running: hyprpm $action $name"
 echo
