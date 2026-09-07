@@ -56,7 +56,9 @@ mapfile -t state_files < <(find "$STATE_DIR" -mindepth 2 -maxdepth 2 -name state
 # table per plugin carrying enabled/failed/filename.
 parse_state() {
   awk '
-    function strip(v) { gsub(/^[ \t]*/,"",v); gsub(/[ \t]*$/,"",v); gsub(/^"|"$/,"",v); return v }
+    # hyprpm writes TOML with SINGLE quotes (name = \x27hyprland-plugins\x27), but
+    # accepts either. Strip both, or the repo name renders with its quotes.
+    function strip(v) { gsub(/^[ \t]*/,"",v); gsub(/[ \t]*$/,"",v); gsub(/^["\x27]|["\x27]$/,"",v); return v }
     /^[ \t]*\[/ {
       sec=$0; gsub(/^[ \t]*\[[ \t]*/,"",sec); gsub(/[ \t]*\][ \t]*$/,"",sec)
       if (sec != "repository") { plugin=sec; en[plugin]="false"; fa[plugin]="false"; order[++n]=plugin }
