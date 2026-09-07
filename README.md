@@ -53,7 +53,9 @@ to install before you have any Hyprland plugins.
 ## Using it
 
 Click the puzzle icon to open the panel. It lists every plugin hyprpm knows
-about, whether it is loaded, and a switch to enable or disable it.
+about and whether it is loaded. Flipping a switch opens a terminal that runs the
+enable or disable and then reloads it into the running session — enabling
+without reloading would record the change but leave the compositor unaware of it.
 
 | Key | Action |
 |---|---|
@@ -67,8 +69,12 @@ about, whether it is loaded, and a switch to enable or disable it.
 root — it elevates internally. Rather than wrap that, **this plugin holds no
 privilege at all**: update and reload are handed to a visible floating
 terminal, the same way Omarchy's built-in system-update widget does it. You see
-the build output and the password prompt lands somewhere real. Enable and
-disable are unprivileged and run in place.
+the build output and the password prompt lands somewhere real.
+
+Enabling or disabling a plugin opens that terminal too. hyprpm elevates for
+*every* state write, not just builds — a switch flipped quietly in the
+background fails with `Failed to write plugin state` and springs back with no
+explanation, so the terminal is the honest thing to show you.
 
 ## How it works
 
@@ -91,10 +97,11 @@ without touching the UI. See [docs/detection.md](docs/detection.md).
 ## Tests
 
 ```
-tests/test-status.sh
+tests/test-status.sh   # detection: 12 fixtures
+tests/test-apply.sh    # enable/disable helper, with hyprpm stubbed
 ```
 
-Eleven fixtures cover every state, including ones that are painful to
+Twelve fixtures cover every state, including ones that are painful to
 reproduce on a live compositor. The collector takes `hyprctl`, the state store
 path and the dependency list from environment variables, so the suite never
 touches the real state store or the running session.

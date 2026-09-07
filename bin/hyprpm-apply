@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+#
+# hyprpm-apply <enable|disable> <plugin> — flip a plugin and load the result.
+#
+# This runs in a VISIBLE terminal, never in the background. Every hyprpm state
+# write goes through its superuser helper, which shells out to sudo/doas/run0
+# and needs a real terminal to prompt on. Run from the shell process it fails
+# with "Failed to write plugin state" and silently changes nothing.
+#
+# Enabling without reloading also does nothing visible: the plugin is recorded
+# as enabled but is not in the running compositor until hyprpm reload. So the
+# two always travel together, and a failed flip must not reload.
+#
+#   HYPRPM_MGR_HYPRPM  path to hyprpm (default: hyprpm) — for tests
+set -uo pipefail
+
+HYPRPM=${HYPRPM_MGR_HYPRPM:-hyprpm}
+
+usage() {
+  echo "usage: hyprpm-apply <enable|disable> <plugin>" >&2
+  exit 2
+}
+
+action=${1:-}
+name=${2:-}
+case "$action" in
+  enable|disable) ;;
+  *) usage ;;
+esac
+[[ -n $name ]] || usage
+
+echo "Running: hyprpm $action $name"
+echo
+if ! "$HYPRPM" "$action" "$name"; then
+  echo
+  echo "hyprpm $action $name failed - nothing was changed." >&2
+  exit 1
+fi
+
+echo
+echo "Loading the change into the running session: hyprpm reload"
+if ! "$HYPRPM" reload; then
+  echo
+  echo "Plugin was ${action}d, but hyprpm reload failed." >&2
+  echo "The change takes effect after the next Hyprland restart." >&2
+  exit 1
+fi
+
+echo
+echo "Done - $name is now $action""d."

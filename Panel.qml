@@ -74,15 +74,19 @@ Panel {
     root.close()
   }
 
-  // enable/disable are instant and unprivileged, so they run in place.
-  function setPluginEnabled(name, on) {
-    toggleProc.command = ["hyprpm", on ? "enable" : "disable", name]
-    toggleProc.running = true
-  }
+  // Flipping a plugin is NOT unprivileged. hyprpm elevates for every state
+  // write, not only for builds, so run from the shell process this fails with
+  // "Failed to write plugin state" and the switch springs back with no
+  // explanation. It goes to the same visible terminal as update and reload.
+  //
+  // The launcher collapses its arguments with "$*", which destroys quoting, so
+  // the work lives in bin/hyprpm-apply and is invoked with plain arguments --
+  // never as a composed shell string with && or quotes in it.
+  readonly property string applyHelper:
+    decodeURIComponent(Qt.resolvedUrl("bin/hyprpm-apply").toString().slice(7))
 
-  Process {
-    id: toggleProc
-    onExited: if (root.status) root.status.refresh()
+  function setPluginEnabled(name, on) {
+    root.runInTerminal(root.applyHelper + " " + (on ? "enable" : "disable") + " " + name)
   }
 
   onOpenedChanged: if (opened && status) status.refresh()
