@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "tiertek.hyprpm-manager",
   "name": "hyprpm Manager",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "TierTek",
   "license": "MIT",
   "description": "Hyprland native plugin health in the Omarchy bar. Warns you when hyprpm plugins are about to stop loading, and hands you the one command that fixes it.",

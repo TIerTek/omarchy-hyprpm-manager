@@ -86,5 +86,32 @@ else
   printf '  FAIL uncached auth prompts once then proceeds (exit %s, calls [%s])\n' "$rc" "$got"; fail=$((fail+1))
 fi
 
+# --- Plugin names are attacker-influenced. ---------------------------------
+# The name comes from hyprpm's own state.toml, i.e. from whatever git repo the
+# user added. Panel.qml hands this helper's path AND this name to the floating
+# terminal launcher, which collapses its arguments with "$*" and re-parses the
+# result as a shell command. So a name is not a string, it is code, unless it
+# is constrained to a closed grammar here as well as at the QML boundary.
+# Reported by the marketplace security review of v0.3.0.
+check "rejects name with semicolon"   2 "" enable 'hyprexpo; touch /tmp/pwned'
+check "rejects command substitution"  2 "" enable 'hyprexpo$(id)'
+check "rejects backticks"             2 "" enable 'hyprexpo`id`'
+check "rejects pipe"                  2 "" enable 'hyprexpo|id'
+check "rejects ampersand"             2 "" enable 'hyprexpo&&id'
+check "rejects redirection"           2 "" enable 'hyprexpo>/tmp/x'
+check "rejects whitespace"            2 "" enable 'hypr expo'
+check "rejects newline"               2 "" enable 'hyprexpo
+id'
+check "rejects glob characters"       2 "" enable 'hyprexpo*'
+check "rejects quotes"                2 "" enable "hyprexpo'\""
+check "rejects leading dash as flag"  2 "" disable '--help'
+check "rejects path traversal"        2 "" enable '../../etc/passwd'
+check "rejects trailing newline"      2 "" enable 'hyprexpo
+'
+# ...and the grammar must still accept every name hyprpm can legitimately emit.
+check "accepts plain name"            0 "sudo -n true|enable hyprexpo|reload"          enable hyprexpo
+check "accepts internal dashes"       0 "sudo -n true|enable borders-plus-plus|reload" enable borders-plus-plus
+check "accepts dots and underscores"  0 "sudo -n true|enable my_plug.in-2|reload"      enable my_plug.in-2
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]

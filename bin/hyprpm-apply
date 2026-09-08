@@ -31,6 +31,25 @@ case "$action" in
 esac
 [[ -n $name ]] || usage
 
+# A plugin name is NOT trusted input. It is read out of hyprpm's state.toml,
+# which is populated from whatever git repo the user added, and Panel.qml hands
+# it to omarchy-launch-floating-terminal-with-presentation -- a launcher that
+# collapses its arguments with "$*" and lets a shell re-parse the result. A
+# name containing ; $() `` | & > or whitespace therefore becomes command
+# execution on a toggle click, no matter how carefully this script quotes its
+# own use of it. Constrain it to a closed grammar and refuse everything else.
+#
+# The leading character is restricted separately so a name can never be taken
+# for an option by hyprpm itself ("--help", "-rf").
+#
+# Reported by the Omarchy marketplace security review of v0.3.0; the QML side
+# applies the same grammar via PluginName.js before it ever gets this far.
+if [[ ! $name =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+  printf 'hyprpm-apply: refusing unsafe plugin name: %q\n' "$name" >&2
+  echo "Plugin names must match [A-Za-z0-9_][A-Za-z0-9._-]*" >&2
+  exit 2
+fi
+
 # Ask for elevation ourselves, once, before hyprpm runs.
 #
 # hyprpm shells out to sudo part-way through its own output capture. When that

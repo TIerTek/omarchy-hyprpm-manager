@@ -3,6 +3,7 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 import "NotifyModel.js" as NotifyModel
+import "PluginName.js" as PluginName
 
 Panel {
   id: root
@@ -119,6 +120,17 @@ Panel {
     decodeURIComponent(Qt.resolvedUrl("bin/hyprpm-apply").toString().slice(7))
 
   function setPluginEnabled(name, on) {
+    // The launcher below collapses its arguments and lets a shell re-parse the
+    // result, so this name is not data -- it is code. It arrives from hyprpm's
+    // state.toml, i.e. from whatever git repo the user added, and a name
+    // holding ; $() `` | & > or whitespace would run on a toggle click.
+    // Refuse to compose the string at all unless it is in the closed grammar;
+    // bin/hyprpm-apply enforces the same rule for its own sake.
+    if (!PluginName.isSafeName(name)) {
+      console.warn("tiertek.hyprpm-manager: refusing unsafe plugin name from hyprpm state:",
+                   JSON.stringify(name))
+      return
+    }
     root.runInTerminal(root.applyHelper + " " + (on ? "enable" : "disable") + " " + name)
   }
 
